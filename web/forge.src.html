@@ -1,0 +1,453 @@
+<title>Forge Roll Predictor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a forge bench. Controls on the left, the reading of the rolls on the right; stacks on phones. */
+:root {
+  --bg: #f3efe8;          /* ash-washed stone */
+  --panel: #fbf8f3;
+  --ink: #241f1a;
+  --muted: #6c625a;
+  --line: #ddd3c6;
+  --ember: #b8501d;       /* forge glow accent */
+  --ember-soft: #f4dfd2;
+  --ok: #2f7a4b;
+  --ok-soft: #dcefe2;
+  --bad: #a8322b;
+  --bad-soft: #f5dcd9;
+  --font-display: "Alegreya SC", Georgia, serif;
+  --font-body: "Alegreya Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1916; --panel: #24211d; --ink: #ece5da; --muted: #a79c90; --line: #3a352e;
+    --ember: #e8834a; --ember-soft: #3d2a1f; --ok: #6cc28b; --ok-soft: #1f3327; --bad: #ec7b70; --bad-soft: #3e2421;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1916; --panel: #24211d; --ink: #ece5da; --muted: #a79c90; --line: #3a352e;
+  --ember: #e8834a; --ember-soft: #3d2a1f; --ok: #6cc28b; --ok-soft: #1f3327; --bad: #ec7b70; --bad-soft: #3e2421;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 24px; }
+header h1 { font-family: var(--font-display); font-weight: 700; font-size: 2.1rem; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 68ch; }
+.bench { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 820px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+.field { display: grid; gap: 6px; }
+label, .label { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+input[type=text], input[type=number], select {
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%;
+}
+input:focus-visible, select:focus-visible, button:focus-visible, .inv-item:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.file { border: 1px dashed var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 6px; }
+.file input { font: inherit; font-size: .9rem; max-width: 100%; }
+.hint { font-size: .85rem; color: var(--muted); margin: 0; }
+.hint code, .mono { font-family: var(--font-mono); font-size: .8rem; word-break: break-all; }
+.status { font-size: .9rem; margin: 0; }
+.status.err { color: var(--bad); }
+.status.ok { color: var(--ok); }
+
+.results { display: grid; gap: 20px; min-width: 0; }
+.verdict { border-radius: 10px; padding: 18px 20px; display: grid; gap: 4px; border: 1px solid var(--line); background: var(--panel); }
+.verdict.success { background: var(--ok-soft); border-color: transparent; }
+.verdict.break { background: var(--bad-soft); border-color: transparent; }
+.verdict .what { font-size: .82rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+.verdict .big { font-family: var(--font-display); font-size: 1.9rem; font-weight: 700; line-height: 1.15; }
+.verdict.success .big { color: var(--ok); }
+.verdict.break .big { color: var(--bad); }
+.verdict .sub { color: var(--muted); }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: .92rem; }
+.facts b { font-weight: 700; }
+
+h2 { font-family: var(--font-display); font-size: 1.25rem; margin: 0; font-weight: 700; }
+.section { display: grid; gap: 10px; min-width: 0; }
+.path { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { font-family: var(--font-mono); font-size: .82rem; padding: 4px 9px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); white-space: nowrap; }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.start { background: var(--ember-soft); color: var(--ember); }
+.arrow { color: var(--muted); }
+
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+td.lvl { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
+td.done { color: var(--muted); font-family: var(--font-mono); font-size: .85rem; }
+.cell { font-family: var(--font-mono); font-size: .85rem; display: inline-flex; gap: 6px; align-items: center; padding: 2px 8px; border-radius: 6px; }
+.cell.s { background: var(--ok-soft); color: var(--ok); }
+.cell.b { background: var(--bad-soft); color: var(--bad); }
+.cell.close { outline: 1px dashed currentColor; }
+
+.inv { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.inv-item { text-align: left; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; display: grid; gap: 2px; }
+.inv-item:hover { border-color: var(--ember); }
+.inv-item.sel { border-color: var(--ember); box-shadow: inset 3px 0 0 var(--ember); }
+.inv-item .n { font-weight: 700; }
+.inv-item .m { font-size: .85rem; color: var(--muted); }
+.inv-item .m .s { color: var(--ok); font-weight: 700; }
+.inv-item .m .b { color: var(--bad); font-weight: 700; }
+.notes { font-size: .88rem; color: var(--muted); display: grid; gap: 6px; max-width: 75ch; }
+.notes p { margin: 0; }
+@media (prefers-reduced-motion: no-preference) { .verdict { transition: background-color .2s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Forge Roll Predictor</h1>
+    <p>Valheim's Forge of Potential doesn't roll fresh dice. Every result comes from a fixed sequence seeded by your character's name, the item and the target level. Pick an item to see what's coming.</p>
+  </header>
+
+  <div class="bench">
+    <form class="panel" id="controls" autocomplete="off">
+      <div class="field">
+        <label for="name">Character name</label>
+        <input type="text" id="name" value="Yourfate" spellcheck="false">
+      </div>
+      <div class="file">
+        <label for="save">Character save (optional)</label>
+        <input type="file" id="save" accept=".fch,.old">
+        <p class="hint">Fills in your name, your item levels and the attempts you've already made. The file is read in this browser only. On Linux with Steam it's in <code>~/.local/share/Steam/userdata/&lt;id&gt;/892970/remote/characters/</code>.</p>
+        <p class="status" id="saveStatus" hidden></p>
+      </div>
+      <div class="field">
+        <label for="item">Item</label>
+        <select id="item"></select>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="current">Current level</label>
+          <input type="number" id="current" min="1" max="60" value="6">
+        </div>
+        <div class="field">
+          <label for="levels">Levels</label>
+          <input type="number" id="levels" min="1" max="30" value="8">
+        </div>
+        <div class="field">
+          <label for="attempts">Tries</label>
+          <input type="number" id="attempts" min="1" max="12" value="5">
+        </div>
+      </div>
+      <p class="hint">Each idol: 65% success. Any failure destroys the item (it never just downgrades).</p>
+    </form>
+
+    <div class="results">
+      <div class="verdict" id="verdict"></div>
+
+      <div class="section">
+        <h2>Refining one copy from here</h2>
+        <div class="path" id="path"></div>
+      </div>
+
+      <div class="section">
+        <h2>Roll sequence per target level</h2>
+        <div class="tablebox"><table id="table"></table></div>
+        <p class="hint">Each row is its own sequence. The first cell is your next try at that level; the following cells are the tries after it, including ones made with other copies of the same item. Rolls at or below 0.650 succeed. A dashed outline means the roll is within 0.001 of the threshold.</p>
+      </div>
+
+      <div class="section" id="invSection" hidden>
+        <h2>Your refinable items</h2>
+        <div class="inv" id="inv"></div>
+      </div>
+
+      <div class="notes">
+        <p>Only the idol is spent at the forge. When an item breaks you get back 35% (rounded up) of its base materials plus the materials for its previous upgrade step. Idols aren't refunded.</p>
+        <p>Without a save loaded, every level is assumed untried. Tries you've made at a level move its sequence forward, so load your save if you've used the forge before. Reloading without saving doesn't change a result: the same roll comes up again.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ITEMS = __ITEMS__.map(([prefab, name, category, maxQ, idol, idolAmt, idolPer, mats]) =>
+  ({ prefab, name, category, maxQ, idol, idolAmt, idolPer, mats }));
+const BY_PREFAB = Object.fromEntries(ITEMS.map(i => [i.prefab, i]));
+const UPGRADE_CHANCE = Math.fround(0.65), BREAK_RETURN = Math.fround(0.35);
+const CATEGORY_ORDER = ["Swords", "Axes", "Clubs", "Knives", "Spears", "Polearms", "Fists", "Bows", "Crossbows",
+  "Elemental magic", "Blood magic", "Shields", "Helmets", "Chest armor", "Leg armor", "Capes", "Tools"];
+
+// ---- game math (mirrors assembly_valheim / assembly_utils) ----
+function stableHash(s) {
+  let a = 5381, b = 5381;
+  for (let i = 0; i < s.length && s.charCodeAt(i) !== 0; i += 2) {
+    a = (Math.imul(a, 33) ^ s.charCodeAt(i)) | 0;
+    if (i === s.length - 1 || s.charCodeAt(i + 1) === 0) break;
+    b = (Math.imul(b, 33) ^ s.charCodeAt(i + 1)) | 0;
+  }
+  return (a + Math.imul(b, 1566083941)) | 0;
+}
+// UnityEngine.Random: xorshift128 seeded MT-style
+function roll(seed) {
+  let x = seed >>> 0;
+  let y = (Math.imul(1812433253, x) + 1) >>> 0;
+  let z = (Math.imul(1812433253, y) + 1) >>> 0;
+  let w = (Math.imul(1812433253, z) + 1) >>> 0;
+  const next = () => {
+    const t = (x ^ (x << 11)) >>> 0;
+    x = y; y = z; z = w;
+    w = (w ^ (w >>> 19) ^ t ^ (t >>> 8)) >>> 0;
+    return w;
+  };
+  const value = (next() & 0x7FFFFF) / 8388607;
+  const nextSeed = (next() % 99999999) | 0;
+  return [value, nextSeed];
+}
+const keyFor = (prefab, level) => (stableHash(prefab) + level) | 0;
+const firstSeed = (name, key) => (stableHash(name) + key) | 0;
+
+function sequence(name, seeds, prefab, level, count) {
+  const key = keyFor(prefab, level);
+  let seed = seeds.has(key) ? seeds.get(key) : firstSeed(name, key);
+  const out = [];
+  for (let i = 0; i < count; i++) { const [v, n] = roll(seed); out.push(v); seed = n; }
+  return out;
+}
+function attemptsMade(name, seeds, prefab, level) {
+  const key = keyFor(prefab, level);
+  if (!seeds.has(key)) return 0;
+  let seed = firstSeed(name, key);
+  for (let n = 1; n <= 500; n++) { seed = roll(seed)[1]; if (seed === seeds.get(key)) return n; }
+  return null;
+}
+// Piece.Requirement.GetAmount
+function amountAt(amount, perLevel, q, isIdol) {
+  if (q <= 1) return amount;
+  const f = q >= 4 ? 4 + (q - 4) / 2 : q - 1;
+  return Math.floor(f * perLevel + (isIdol ? amount : 0));
+}
+
+// ---- save parsing (PlayerProfile.LoadPlayerFromDisk) ----
+class Reader {
+  constructor(buf, pos = 0) { this.v = new DataView(buf); this.u8 = new Uint8Array(buf); this.p = pos; }
+  int() { const r = this.v.getInt32(this.p, true); this.p += 4; return r; }
+  skip(n) { this.p += n; }
+  bool() { return this.u8[this.p++] !== 0; }
+  str() {
+    let n = 0, shift = 0, b;
+    do { b = this.u8[this.p++]; n |= (b & 0x7f) << shift; shift += 7; } while (b & 0x80);
+    const s = new TextDecoder().decode(this.u8.subarray(this.p, this.p + n)); this.p += n; return s;
+  }
+  strFloatDict() { for (let i = this.int(); i > 0; i--) { this.str(); this.skip(4); } }
+}
+function parseSave(file) {
+  const outer = new DataView(file);
+  const len = outer.getInt32(0, true);
+  const data = file.slice(4, 4 + len);
+  const r = new Reader(data);
+  const ver = r.int();
+  if (ver < 44) throw new Error(`This save uses an old format (version ${ver}). Load the character in the current game once, then try again.`);
+  const statCount = r.int(), diffs = r.int();
+  for (let d = 0; d < diffs; d++) {
+    r.skip(4 * statCount);
+    for (let i = 0; i < 3; i++) r.strFloatDict();
+    for (let e = r.int(); e > 0; e--) r.strFloatDict();
+    for (let i = 0; i < 5; i++) r.strFloatDict();
+  }
+  r.bool();
+  for (let w = r.int(); w > 0; w--) {
+    r.skip(8); r.bool(); r.skip(12); r.bool(); r.skip(12); r.bool(); r.skip(12); r.skip(12);
+    if (r.bool()) r.skip(r.int());
+  }
+  const name = r.str();
+
+  // Upgrade seeds are the last dict in the player data, right after another int->int dict.
+  const dv = new DataView(data), end = data.byteLength;
+  let seeds = null;
+  outer: for (let n = 0; n < 10000; n++) {
+    const p = end - 8 * n - 4; if (p < 0) break;
+    if (dv.getInt32(p, true) !== n) continue;
+    for (let m = 0; m < 10000; m++) {
+      const q = p - 8 * m - 4; if (q < 0) break;
+      if (dv.getInt32(q, true) === m) {
+        seeds = new Map();
+        for (let i = 0; i < n; i++) seeds.set(dv.getInt32(p + 4 + 8 * i, true), dv.getInt32(p + 8 + 8 * i, true));
+        break outer;
+      }
+    }
+  }
+  if (!seeds) throw new Error("Couldn't find the forge seed table in this file. Is it a Valheim character (.fch)?");
+
+  // Inventory items: find each prefab hash, then a start offset that parses forward onto it.
+  const u8 = new Uint8Array(data), inventory = [];
+  for (const it of ITEMS) {
+    const h = stableHash(it.prefab);
+    for (let p = 8; p < end - 4; p++) {
+      if (dv.getInt32(p, true) !== h) continue;
+      for (let st = Math.max(0, p - 300); st < p - 7; st++) {
+        try {
+          const rr = new Reader(data, st + 4);
+          const fl = u8[rr.p + 3]; rr.skip(4);
+          if (!(fl & 0x40)) continue;
+          let q = 1;
+          if (fl & 4) { q = dv.getUint16(rr.p, true); rr.skip(2); }
+          if (fl & 8) rr.skip(2);
+          if (fl & 16) rr.skip(4);
+          if (fl & 32) { rr.skip(8); rr.str(); }
+          if (rr.p === p && q >= 1 && q <= 100) { inventory.push({ prefab: it.prefab, quality: q }); break; }
+        } catch (e) { /* not an item start */ }
+      }
+    }
+  }
+  return { name, seeds, inventory };
+}
+
+// ---- UI ----
+const $ = id => document.getElementById(id);
+let save = null;   // { name, seeds, inventory }
+
+function fillItemSelect(selected) {
+  const sel = $("item");
+  sel.innerHTML = "";
+  if (save && save.inventory.length) {
+    const g = document.createElement("optgroup"); g.label = "In your inventory";
+    save.inventory.forEach((inv, i) => {
+      const o = new Option(`${BY_PREFAB[inv.prefab].name} (level ${inv.quality})`, `inv:${i}`);
+      g.append(o);
+    });
+    sel.append(g);
+  }
+  const cats = [...new Set(ITEMS.map(i => i.category))].sort((a, b) => {
+    const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  for (const c of cats) {
+    const g = document.createElement("optgroup"); g.label = c;
+    ITEMS.filter(i => i.category === c).sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(i => g.append(new Option(i.name, i.prefab)));
+    sel.append(g);
+  }
+  sel.value = selected;
+  if (!sel.value) sel.selectedIndex = 0;
+}
+
+function currentSelection() {
+  const v = $("item").value;
+  if (v.startsWith("inv:")) return save.inventory[+v.slice(4)].prefab;
+  return v;
+}
+
+function seedsFor(name) {
+  return save && save.name === name ? save.seeds : new Map();
+}
+
+function render() {
+  const name = $("name").value;
+  const prefab = currentSelection();
+  const item = BY_PREFAB[prefab];
+  const current = Math.max(1, +$("current").value || 1);
+  const levels = Math.min(30, Math.max(1, +$("levels").value || 1));
+  const tries = Math.min(12, Math.max(1, +$("attempts").value || 1));
+  const seeds = seedsFor(name);
+  const ok = v => v <= UPGRADE_CHANCE;
+
+  // Verdict for the very next try
+  const target = current + 1;
+  const [v0] = sequence(name, seeds, prefab, target, 1);
+  const success = ok(v0);
+  const idolCost = amountAt(item.idolAmt, item.idolPer, target, true);
+  const refund = item.mats.map(([n, a, per]) =>
+    [n, Math.ceil((amountAt(a, per, 1) + amountAt(a, per, current)) * BREAK_RETURN)]).filter(([, k]) => k > 0);
+  const vd = $("verdict");
+  vd.className = "verdict " + (success ? "success" : "break");
+  vd.innerHTML = `
+    <div class="what">${esc(item.name)}: next try, level ${current} → ${target}</div>
+    <div class="big">${success ? "Succeeds" : "Breaks"}</div>
+    <div class="sub">Roll ${v0.toFixed(3)} (needs 0.650 or lower)${!name ? ". Enter a character name." : ""}</div>
+    <div class="facts">
+      <span>Costs <b>${idolCost} × ${esc(item.idol)}</b></span>
+      <span>Refund if it breaks: <b>${refund.length ? refund.map(([n, k]) => `${k} ${esc(n)}`).join(", ") : "none"}</b></span>
+      <span>Normal max level: <b>${item.maxQ}</b></span>
+    </div>`;
+
+  // Straight run with one copy
+  const path = $("path");
+  let html = `<span class="chip start">level ${current}</span>`, lvl = target;
+  for (let i = 0; i < levels; i++, lvl++) {
+    const [v] = sequence(name, seeds, prefab, lvl, 1);
+    html += `<span class="arrow">→</span>`;
+    if (!ok(v)) { html += `<span class="chip bad">${lvl}: breaks</span>`; break; }
+    html += `<span class="chip">${lvl}</span>`;
+  }
+  path.innerHTML = html;
+
+  // Table
+  let t = `<thead><tr><th>Target</th><th>Tried</th>${Array.from({ length: tries }, (_, i) => `<th>${i === 0 ? "Next" : "Then"}</th>`).join("")}</tr></thead><tbody>`;
+  for (let l = target; l < target + levels; l++) {
+    const made = attemptsMade(name, seeds, prefab, l);
+    const cells = sequence(name, seeds, prefab, l, tries).map(v => {
+      const close = Math.abs(v - UPGRADE_CHANCE) < 0.001 ? " close" : "";
+      return `<td><span class="cell ${ok(v) ? "s" : "b"}${close}">${ok(v) ? "✓" : "✗"} ${v.toFixed(3)}</span></td>`;
+    }).join("");
+    t += `<tr><td class="lvl">${l}</td><td class="done">${made === null ? "?" : made}</td>${cells}</tr>`;
+  }
+  $("table").innerHTML = t + "</tbody>";
+
+  // Inventory overview
+  if (save && save.inventory.length) {
+    $("invSection").hidden = false;
+    const sel = $("item").value;
+    $("inv").innerHTML = save.inventory.map((inv, i) => {
+      const [v] = sequence(name, seedsFor(name), inv.prefab, inv.quality + 1, 1);
+      return `<button type="button" class="inv-item${sel === "inv:" + i ? " sel" : ""}" data-i="${i}">
+        <span class="n">${esc(BY_PREFAB[inv.prefab].name)}</span>
+        <span class="m">Level ${inv.quality} → ${inv.quality + 1}: <span class="${ok(v) ? "s" : "b"}">${ok(v) ? "succeeds" : "breaks"}</span> (${v.toFixed(3)})</span>
+      </button>`;
+    }).join("");
+  } else {
+    $("invSection").hidden = true;
+  }
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function selectInventory(i) {
+  $("item").value = "inv:" + i;
+  $("current").value = save.inventory[i].quality;
+  render();
+}
+
+$("controls").addEventListener("submit", e => e.preventDefault());
+["name", "current", "levels", "attempts"].forEach(id => $(id).addEventListener("input", render));
+$("item").addEventListener("change", () => {
+  const v = $("item").value;
+  if (v.startsWith("inv:")) $("current").value = save.inventory[+v.slice(4)].quality;
+  render();
+});
+$("inv").addEventListener("click", e => {
+  const b = e.target.closest(".inv-item"); if (b) selectInventory(+b.dataset.i);
+});
+$("save").addEventListener("change", async e => {
+  const f = e.target.files[0], st = $("saveStatus");
+  if (!f) return;
+  st.hidden = false;
+  try {
+    save = parseSave(await f.arrayBuffer());
+    $("name").value = save.name;
+    fillItemSelect("");
+    st.className = "status ok";
+    st.textContent = `Loaded ${save.name}: ${save.inventory.length} refinable items, ${save.seeds.size} forge levels already tried.`;
+    if (save.inventory.length) selectInventory(0); else render();
+  } catch (err) {
+    save = null;
+    st.className = "status err";
+    st.textContent = err.message || "Couldn't read this file.";
+    fillItemSelect("StaffClusterbomb");
+    render();
+  }
+});
+
+fillItemSelect("StaffClusterbomb");
+render();
+</script>

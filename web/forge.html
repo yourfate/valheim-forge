@@ -1,0 +1,453 @@
+<title>Forge Roll Predictor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a forge bench. Controls on the left, the reading of the rolls on the right; stacks on phones. */
+:root {
+  --bg: #f3efe8;          /* ash-washed stone */
+  --panel: #fbf8f3;
+  --ink: #241f1a;
+  --muted: #6c625a;
+  --line: #ddd3c6;
+  --ember: #b8501d;       /* forge glow accent */
+  --ember-soft: #f4dfd2;
+  --ok: #2f7a4b;
+  --ok-soft: #dcefe2;
+  --bad: #a8322b;
+  --bad-soft: #f5dcd9;
+  --font-display: "Alegreya SC", Georgia, serif;
+  --font-body: "Alegreya Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1916; --panel: #24211d; --ink: #ece5da; --muted: #a79c90; --line: #3a352e;
+    --ember: #e8834a; --ember-soft: #3d2a1f; --ok: #6cc28b; --ok-soft: #1f3327; --bad: #ec7b70; --bad-soft: #3e2421;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1916; --panel: #24211d; --ink: #ece5da; --muted: #a79c90; --line: #3a352e;
+  --ember: #e8834a; --ember-soft: #3d2a1f; --ok: #6cc28b; --ok-soft: #1f3327; --bad: #ec7b70; --bad-soft: #3e2421;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 28px 48px;
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 24px; }
+header h1 { font-family: var(--font-display); font-weight: 700; font-size: 2.1rem; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 68ch; }
+.bench { display: grid; grid-template-columns: minmax(0, 330px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 820px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 16px; min-width: 0; }
+.field { display: grid; gap: 6px; }
+label, .label { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+input[type=text], input[type=number], select {
+  font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%;
+}
+input:focus-visible, select:focus-visible, button:focus-visible, .inv-item:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.file { border: 1px dashed var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 6px; }
+.file input { font: inherit; font-size: .9rem; max-width: 100%; }
+.hint { font-size: .85rem; color: var(--muted); margin: 0; }
+.hint code, .mono { font-family: var(--font-mono); font-size: .8rem; word-break: break-all; }
+.status { font-size: .9rem; margin: 0; }
+.status.err { color: var(--bad); }
+.status.ok { color: var(--ok); }
+
+.results { display: grid; gap: 20px; min-width: 0; }
+.verdict { border-radius: 10px; padding: 18px 20px; display: grid; gap: 4px; border: 1px solid var(--line); background: var(--panel); }
+.verdict.success { background: var(--ok-soft); border-color: transparent; }
+.verdict.break { background: var(--bad-soft); border-color: transparent; }
+.verdict .what { font-size: .82rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+.verdict .big { font-family: var(--font-display); font-size: 1.9rem; font-weight: 700; line-height: 1.15; }
+.verdict.success .big { color: var(--ok); }
+.verdict.break .big { color: var(--bad); }
+.verdict .sub { color: var(--muted); }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: .92rem; }
+.facts b { font-weight: 700; }
+
+h2 { font-family: var(--font-display); font-size: 1.25rem; margin: 0; font-weight: 700; }
+.section { display: grid; gap: 10px; min-width: 0; }
+.path { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chip { font-family: var(--font-mono); font-size: .82rem; padding: 4px 9px; border-radius: 999px; background: var(--ok-soft); color: var(--ok); white-space: nowrap; }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.start { background: var(--ember-soft); color: var(--ember); }
+.arrow { color: var(--muted); }
+
+.tablebox { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+th { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 700; }
+td.lvl { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
+td.done { color: var(--muted); font-family: var(--font-mono); font-size: .85rem; }
+.cell { font-family: var(--font-mono); font-size: .85rem; display: inline-flex; gap: 6px; align-items: center; padding: 2px 8px; border-radius: 6px; }
+.cell.s { background: var(--ok-soft); color: var(--ok); }
+.cell.b { background: var(--bad-soft); color: var(--bad); }
+.cell.close { outline: 1px dashed currentColor; }
+
+.inv { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.inv-item { text-align: left; font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; display: grid; gap: 2px; }
+.inv-item:hover { border-color: var(--ember); }
+.inv-item.sel { border-color: var(--ember); box-shadow: inset 3px 0 0 var(--ember); }
+.inv-item .n { font-weight: 700; }
+.inv-item .m { font-size: .85rem; color: var(--muted); }
+.inv-item .m .s { color: var(--ok); font-weight: 700; }
+.inv-item .m .b { color: var(--bad); font-weight: 700; }
+.notes { font-size: .88rem; color: var(--muted); display: grid; gap: 6px; max-width: 75ch; }
+.notes p { margin: 0; }
+@media (prefers-reduced-motion: no-preference) { .verdict { transition: background-color .2s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Forge Roll Predictor</h1>
+    <p>Valheim's Forge of Potential doesn't roll fresh dice. Every result comes from a fixed sequence seeded by your character's name, the item and the target level. Pick an item to see what's coming.</p>
+  </header>
+
+  <div class="bench">
+    <form class="panel" id="controls" autocomplete="off">
+      <div class="field">
+        <label for="name">Character name</label>
+        <input type="text" id="name" value="Yourfate" spellcheck="false">
+      </div>
+      <div class="file">
+        <label for="save">Character save (optional)</label>
+        <input type="file" id="save" accept=".fch,.old">
+        <p class="hint">Fills in your name, your item levels and the attempts you've already made. The file is read in this browser only. On Linux with Steam it's in <code>~/.local/share/Steam/userdata/&lt;id&gt;/892970/remote/characters/</code>.</p>
+        <p class="status" id="saveStatus" hidden></p>
+      </div>
+      <div class="field">
+        <label for="item">Item</label>
+        <select id="item"></select>
+      </div>
+      <div class="row2">
+        <div class="field">
+          <label for="current">Current level</label>
+          <input type="number" id="current" min="1" max="60" value="6">
+        </div>
+        <div class="field">
+          <label for="levels">Levels</label>
+          <input type="number" id="levels" min="1" max="30" value="8">
+        </div>
+        <div class="field">
+          <label for="attempts">Tries</label>
+          <input type="number" id="attempts" min="1" max="12" value="5">
+        </div>
+      </div>
+      <p class="hint">Each idol: 65% success. Any failure destroys the item (it never just downgrades).</p>
+    </form>
+
+    <div class="results">
+      <div class="verdict" id="verdict"></div>
+
+      <div class="section">
+        <h2>Refining one copy from here</h2>
+        <div class="path" id="path"></div>
+      </div>
+
+      <div class="section">
+        <h2>Roll sequence per target level</h2>
+        <div class="tablebox"><table id="table"></table></div>
+        <p class="hint">Each row is its own sequence. The first cell is your next try at that level; the following cells are the tries after it, including ones made with other copies of the same item. Rolls at or below 0.650 succeed. A dashed outline means the roll is within 0.001 of the threshold.</p>
+      </div>
+
+      <div class="section" id="invSection" hidden>
+        <h2>Your refinable items</h2>
+        <div class="inv" id="inv"></div>
+      </div>
+
+      <div class="notes">
+        <p>Only the idol is spent at the forge. When an item breaks you get back 35% (rounded up) of its base materials plus the materials for its previous upgrade step. Idols aren't refunded.</p>
+        <p>Without a save loaded, every level is assumed untried. Tries you've made at a level move its sequence forward, so load your save if you've used the forge before. Reloading without saving doesn't change a result: the same roll comes up again.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const ITEMS = [["ArmorAshlandsMediumChest","Breastplate of Ask","Chest armor",4,"Flametal Protection Idol",1,0,[["Linen Thread",15,10],["Lox Pelt",4,2],["Asksvin Hide",10,5]]],["ArmorAshlandsMediumlegs","Trousers of Ask","Leg armor",4,"Flametal Protection Idol",1,0,[["Linen Thread",15,10],["Lox Pelt",4,2],["Asksvin Hide",10,5]]],["ArmorBerserkerChest","Patterns of the Bear","Chest armor",4,"Bronze Protection Idol",1,0,[["Bear Hide",5,2],["Bear Paw",2,0],["Blueberries",4,1]]],["ArmorBerserkerLegs","Loincloth of the Bear","Leg armor",4,"Bronze Protection Idol",1,0,[["Bear Hide",5,2],["Blueberries",4,1]]],["ArmorBerserkerUndeadChest","Vilebone Cage","Chest armor",4,"Black Metal Protection Idol",1,0,[["Bear Hide",4,2],["$item_UndeadBjornRibcage",3,1],["Linen Thread",4,1]]],["ArmorBerserkerUndeadLegs","Vilebone Drapes","Leg armor",4,"Black Metal Protection Idol",1,0,[["Bear Hide",10,5],["$item_UndeadBjornRibcage",1,1],["Linen Thread",4,1]]],["ArmorBronzeChest","Bronze Plate Tunic","Chest armor",4,"Bronze Protection Idol",1,0,[["Bronze",5,3],["Deer Hide",2,0]]],["ArmorBronzeLegs","Bronze Plate Leggings","Leg armor",4,"Bronze Protection Idol",1,0,[["Bronze",5,3],["Deer Hide",2,0]]],["ArmorCarapaceChest","Carapace Breastplate","Chest armor",4,"Black Marble Protection Idol",1,0,[["Carapace",20,10],["Scale Hide",3,1],["Iron",5,0],["Refined Eitr",4,2]]],["ArmorCarapaceLegs","Carapace Greaves","Leg armor",4,"Black Marble Protection Idol",1,0,[["Carapace",20,10],["Scale Hide",3,1],["Iron",5,0],["Refined Eitr",4,2]]],["ArmorDeepNorthHeavyChest","Breastplate of the Protector","Chest armor",4,"Bloodgold Protection Idol",1,0,[["Bloodgold",20,15],["Mould: Breastplate of the Protector",1,0],["Moose Hide",8,3],["Leather Straps",4,3]]],["ArmorDeepNorthHeavylegs","Trousers of the Protector","Leg armor",4,"Bloodgold Protection Idol",1,0,[["Bloodgold",20,15],["Mould: Trousers of the Protector",1,0],["Moose Hide",8,3],["Leather Straps",4,3]]],["ArmorDeepNorthMageChest","Robes of the Caller","Chest armor",4,"Bloodgold Protection Idol",1,0,[["Bloodgold",6,3],["Mould: Robes of the Caller",1,0],["Moose Hide",6,3],["Nornathread",5,3]]],["ArmorDeepNorthMagelegs","Trousers of the Caller","Leg armor",4,"Bloodgold Protection Idol",1,0,[["Bloodgold",6,3],["Mould: Trousers of the Caller",1,0],["Moose Hide",6,3],["Nornathread",5,3]]],["ArmorDeepNorthMediumChest","Chestpiece of the Vanguard","Chest armor",4,"Bloodgold Protection Idol",1,0,[["Bloodgold",12,6],["Mould: Chestpiece of the Vanguard",1,0],["Elaking Hair Bundle",8,4],["Leather Straps",4,2]]],["ArmorDeepNorthMediumlegs","Trousers of the Vanguard","Leg armor",4,"Bloodgold Protection Idol",1,0,[["Bloodgold",12,6],["Mould: Trousers of the Vanguard",1,0],["Elaking Hair Bundle",8,4],["Seal Pelt",4,2]]],["ArmorFenringChest","Fenris Coat","Chest armor",4,"Silver Protection Idol",1,0,[["Fenris Hair",20,5],["Wolf Pelt",5,3],["Leather Scraps",10,4]]],["ArmorFenringLegs","Fenris Leggings","Leg armor",4,"Silver Protection Idol",1,0,[["Fenris Hair",20,5],["Wolf Pelt",5,3],["Leather Scraps",10,4]]],["ArmorFlametalChest","Flametal Breastplate","Chest armor",4,"Flametal Protection Idol",1,0,[["Flametal",20,10],["Asksvin Hide",3,1],["Charred Bone",5,0],["Morgen Heart",1,0]]],["ArmorFlametalLegs","Flametal Greaves","Leg armor",4,"Flametal Protection Idol",1,0,[["Flametal",20,10],["Asksvin Hide",3,1],["Charred Bone",5,0]]],["ArmorIronChest","Iron Scale Mail","Chest armor",4,"Iron Protection Idol",1,0,[["Iron",20,5],["Deer Hide",2,0]]],["ArmorIronLegs","Iron Greaves","Leg armor",4,"Iron Protection Idol",1,0,[["Iron",20,5],["Deer Hide",2,0]]],["ArmorLeatherChest","Leather Tunic","Chest armor",4,"Wooden Protection Idol",1,0,[["Deer Hide",6,6],["Bone Fragments",0,5]]],["ArmorLeatherLegs","Leather Trousers","Leg armor",4,"Wooden Protection Idol",1,0,[["Deer Hide",6,6],["Bone Fragments",0,5]]],["ArmorLoxChest","Lox Fur Jacket","Chest armor",4,"Black Metal Protection Idol",1,0,[["Lox Pelt",5,6],["Bone Fragments",8,4],["Root",2,1]]],["ArmorLoxLegs","Lox Fur Trousers","Leg armor",4,"Black Metal Protection Idol",1,0,[["Lox Pelt",5,3],["Bone Fragments",8,4],["Root",2,1]]],["ArmorMageChest","Eitr-weave Robe","Chest armor",4,"Black Marble Protection Idol",1,0,[["Linen Thread",20,10],["Refined Eitr",20,5],["Feathers",10,0],["Scale Hide",5,0]]],["ArmorMageChest_Ashlands","Robes of Embla","Chest armor",4,"Flametal Protection Idol",1,0,[["Linen Thread",20,10],["Refined Eitr",20,5],["Asksvin Hide",10,0],["Flametal",5,2]]],["ArmorMageLegs","Eitr-weave Trousers","Leg armor",4,"Black Marble Protection Idol",1,0,[["Linen Thread",20,10],["Refined Eitr",20,5],["Scale Hide",10,0]]],["ArmorMageLegs_Ashlands","Trousers of Embla","Leg armor",4,"Flametal Protection Idol",1,0,[["Linen Thread",20,10],["Refined Eitr",20,5],["Asksvin Hide",10,0]]],["ArmorPaddedCuirass","Padded Cuirass","Chest armor",4,"Black Metal Protection Idol",1,0,[["Iron",10,3],["Linen Thread",20,10]]],["ArmorPaddedGreaves","Padded Greaves","Leg armor",4,"Black Metal Protection Idol",1,0,[["Iron",10,3],["Linen Thread",20,10]]],["ArmorRagsChest","Rag Tunic","Chest armor",2,"Wooden Protection Idol",1,0,[["Leather Scraps",5,5]]],["ArmorRagsLegs","Rag Trousers","Leg armor",2,"Wooden Protection Idol",1,0,[["Leather Scraps",5,5]]],["ArmorRootChest","Root Harnesk","Chest armor",4,"Iron Protection Idol",1,0,[["Root",10,2],["Ancient Bark",10,5],["Deer Hide",2,0]]],["ArmorRootLegs","Root Leggings","Leg armor",4,"Iron Protection Idol",1,0,[["Root",10,2],["Ancient Bark",10,5],["Deer Hide",2,0]]],["ArmorTrollLeatherChest","Troll Leather Tunic","Chest armor",4,"Bronze Protection Idol",1,0,[["Troll Hide",5,2]]],["ArmorTrollLeatherLegs","Troll Leather Trousers","Leg armor",4,"Bronze Protection Idol",1,0,[["Troll Hide",5,2]]],["ArmorWolfChest","Wolf Hide Chestpiece","Chest armor",4,"Silver Protection Idol",1,0,[["Silver",20,5],["Wolf Pelt",5,2],["Chain",1,0]]],["ArmorWolfLegs","Wolf Hide Trousers","Leg armor",4,"Silver Protection Idol",1,0,[["Silver",20,5],["Wolf Pelt",5,2],["Wolf Fang",4,1]]],["AtgeirBlackmetal","Black Metal Atgeir","Polearms",4,"Black Metal Battle Idol",1,0,[["Finewood",10,0],["Black Metal",30,15],["Linen Thread",5,5]]],["AtgeirBronze","Bronze Atgeir","Polearms",4,"Bronze Battle Idol",1,0,[["Wood",10,0],["Bronze",8,4],["Leather Scraps",2,0]]],["AtgeirGold","Nord Atgeir","Polearms",4,"Bronze Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Atgeir",1,0],["Timberwood",10,5]]],["AtgeirGold_BloodLightning","Thunderblood Atgeir","Polearms",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["AtgeirGold_FrostFire","Frostfire Atgeir","Polearms",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["AtgeirHimminAfl","Himminafl","Polearms",4,"Black Marble Battle Idol",1,0,[["Yggdrasil Wood",10,0],["Refined Eitr",15,15],["Silver",5,5],["Mandible",2,2]]],["AtgeirIron","Iron Atgeir","Polearms",4,"Iron Battle Idol",1,0,[["Wood",10,0],["Iron",30,15],["Leather Scraps",2,1]]],["AxeBerzerkr","Berserkir Axes","Axes",4,"Flametal Battle Idol",1,0,[["Charred Bone",15,0],["Flametal",24,15],["Asksvin Hide",3,1]]],["AxeBerzerkrBlood","Bleeding Berserkir Axes","Axes",4,"Flametal Battle Idol",1,0,[["Flametal",5,5]]],["AxeBerzerkrLightning","Thundering Berserkir Axes","Axes",4,"Flametal Battle Idol",1,0,[["Flametal",5,5]]],["AxeBerzerkrNature","Primal Berserkir Axes","Axes",4,"Flametal Battle Idol",1,0,[["Flametal",5,5]]],["AxeBlackMetal","Black Metal Axe","Axes",4,"Black Metal Battle Idol",1,0,[["Finewood",6,0],["Black Metal",20,10],["Linen Thread",5,5]]],["AxeBronze","Bronze Axe","Axes",4,"Iron Battle Idol",1,0,[["Wood",4,0],["Bronze",8,4],["Leather Scraps",2,1]]],["AxeEarly","Early Axes","Axes",4,"Iron Battle Idol",1,0,[["Wood",4,2],["Leather Scraps",0,2],["Curious Axe Head",1,0],["Mysterious Axe Head",1,0]]],["AxeFlint","Flint Axe","Axes",4,"Bronze Battle Idol",1,0,[["Wood",4,0],["Flint",6,3],["Leather Scraps",0,2]]],["AxeGold","Nord Axe","Axes",4,"Black Metal Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Axe",1,0],["Timberwood",10,5]]],["AxeGold_BloodLightning","Thunderblood Axe","Axes",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["AxeGold_FrostFire","Frostfire Axe","Axes",4,"Black Metal Battle Idol",1,0,[["Bloodgold",20,10]]],["AxeIron","Iron Axe","Axes",4,"Silver Battle Idol",1,0,[["Wood",4,0],["Iron",20,10],["Leather Scraps",2,1]]],["AxeJotunBane","Jotun Bane","Axes",4,"Black Metal Battle Idol",1,0,[["Yggdrasil Wood",5,0],["Iron",15,10],["Bilebag",3,1],["Refined Eitr",10,1]]],["AxeStone","Stone Axe","Axes",4,"Wooden Battle Idol",1,0,[["Wood",5,0],["Stone",4,2]]],["Battleaxe","Battleaxe","Axes",4,"Iron Battle Idol",1,0,[["Ancient Bark",30,5],["Iron",35,15],["Leather Scraps",4,0]]],["BattleaxeBlackmetal","Black Metal Battleaxe","Axes",4,"Black Metal Battle Idol",1,0,[["Finewood",10,0],["Black Metal",30,15],["Linen Thread",5,5]]],["BattleaxeCrystal","Crystal Battleaxe","Axes",4,"Silver Battle Idol",1,0,[["Ancient Bark",40,5],["Silver",30,15],["Crystal",10,0]]],["BattleaxeGold","Nord Greataxe","Axes",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Greataxe",1,0],["Timberwood",10,5]]],["BattleaxeGold_BloodLightning","Thunderblood Greataxe","Axes",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["BattleaxeGold_FrostFire","Frostfire Greataxe","Axes",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["BattleaxeSkullSplittur","Skull Splittur","Axes",4,"Black Marble Battle Idol",1,0,[["Iron",30,15],["Yggdrasil Wood",15,5],["Refined Eitr",10,0]]],["Bow","Crude Bow","Bows",4,"Wooden Battle Idol",1,0,[["Wood",10,5],["Leather Scraps",8,4],["Deer Hide",0,1]]],["BowAshlands","Ash Fang","Bows",4,"Flametal Battle Idol",1,0,[["Ashwood",10,5],["Charred Bone",16,10],["Flametal",5,5],["Bonemaw Tooth",5,5]]],["BowAshlandsBlood","Blood Fang","Bows",4,"Flametal Battle Idol",1,0,[["Flametal",5,5]]],["BowAshlandsRoot","Root Fang","Bows",4,"Flametal Battle Idol",1,0,[["Flametal",5,5]]],["BowAshlandsStorm","Storm Fang","Bows",4,"Flametal Battle Idol",1,0,[["Flametal",5,5]]],["BowDraugrFang","Draugr Fang","Bows",4,"Iron Battle Idol",1,0,[["Ancient Bark",10,5],["Silver",20,10],["Deer Hide",2,2],["Guck",10,2]]],["BowFineWood","Finewood Bow","Bows",4,"Bronze Battle Idol",1,0,[["Finewood",10,5],["Corewood",10,5],["Deer Hide",2,2]]],["BowGold","Nord Bow","Bows",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Bow",1,0],["Timberwood",10,5]]],["BowGold_BloodLightning","Thunderblood Bow","Bows",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["BowGold_FrostFire","Frostfire Bow","Bows",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["BowHuntsman","Huntsman Bow","Bows",4,"Iron Battle Idol",1,0,[["Finewood",10,5],["Iron",20,10],["Feathers",10,5],["Deer Hide",2,2]]],["BowSpineSnap","Spinesnap","Bows",4,"Black Marble Battle Idol",1,0,[["Finewood",10,5],["Bone Fragments",40,20],["Refined Eitr",10,0]]],["CapeAsh","Ashen Cape","Capes",4,"Flametal Protection Idol",1,0,[["Asksvin Hide",6,2],["Morgen Sinew",2,0],["Flametal",5,0]]],["CapeAsksvin","Asksvin Cloak","Capes",4,"Flametal Protection Idol",1,0,[["Asksvin Hide",6,2],["Morgen Sinew",2,0]]],["CapeDeepNorth","Moose Hide Cape","Capes",4,"Bloodgold Protection Idol",1,0,[["Moose Hide",6,3],["Moose Sinew",2,1],["Bloodgold",5,2]]],["CapeDeepNorthMage","Cape of the Caller","Capes",4,"Bloodgold Protection Idol",1,0,[["Seal Pelt",6,3],["Nornathread",2,1],["Bloodgold",5,2],["Refined Eitr",15,5]]],["CapeDeerHide","Deer Hide Cape","Capes",4,"Wooden Protection Idol",1,0,[["Deer Hide",4,4],["Bone Fragments",5,5]]],["CapeFeather","Feather Cape","Capes",4,"Black Marble Protection Idol",1,0,[["Feathers",10,2],["Scale Hide",5,5],["Refined Eitr",20,3]]],["CapeLinen","Linen Cape","Capes",4,"Black Metal Protection Idol",1,0,[["Linen Thread",20,4],["Silver",1,0]]],["CapeLox","Lox Cape","Capes",4,"Black Metal Protection Idol",1,0,[["Lox Pelt",6,2],["Silver",2,0]]],["CapeOdin","Cape of Oden","Capes",4,"Bronze Protection Idol",1,0,[["Leather Scraps",10,5],["Coal",4,2]]],["CapeTrollHide","Troll Hide Cape","Capes",4,"Bronze Protection Idol",1,0,[["Troll Hide",10,5],["Bone Fragments",10,5]]],["CapeWolf","Wolf Fur Cape","Capes",4,"Silver Protection Idol",1,0,[["Wolf Pelt",6,4],["Silver",4,2],["Wolf Trophy",1,0]]],["Club","Club","Clubs",4,"Wooden Battle Idol",1,0,[["Wood",6,0],["Bone Fragments",0,5]]],["CrossbowArbalest","Arbalest","Crossbows",4,"Black Marble Battle Idol",1,0,[["Wood",10,5],["Iron",8,4],["Root",4,1]]],["CrossbowGold","Nord Crossbow","Crossbows",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Crossbow",1,0],["Timberwood",10,5]]],["CrossbowGold_BloodLightning","Thunderblood Crossbow","Crossbows",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["CrossbowGold_FrostFire","Frostfire Crossbow","Crossbows",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["CrossbowRipper","Ripper","Crossbows",4,"Flametal Battle Idol",1,0,[["Ashwood",10,5],["Flametal",8,4],["Morgen Sinew",2,1],["Bonemaw Tooth",4,4]]],["CrossbowRipperBlood","Wound Ripper","Crossbows",4,"Flametal Battle Idol",1,0,[["Flametal",8,8]]],["CrossbowRipperLightning","Storm Ripper","Crossbows",4,"Flametal Battle Idol",1,0,[["Flametal",8,8]]],["CrossbowRipperNature","Root Ripper","Crossbows",4,"Flametal Battle Idol",1,0,[["Flametal",8,8]]],["Cultivator","Cultivator","Tools",3,"Wooden Battle Idol",1,0,[["Corewood",5,1],["Bronze",5,1]]],["FistBjornClaw","Paws of the Bear","Fists",4,"Bronze Battle Idol",1,0,[["Bear Hide",2,2],["Bear Paw",2,0],["Leather Scraps",4,2]]],["FistBjornUndeadClaw","Vilebone Maulclaws","Fists",4,"Black Metal Battle Idol",1,0,[["Bear Hide",2,1],["$item_UndeadBjornRibcage",2,1],["Black Metal",2,1],["Linen Thread",4,2]]],["FistFenrirClaw","Flesh Rippers","Fists",4,"Silver Battle Idol",1,0,[["Fenris Hair",10,1],["Fenris Claw",6,1],["Silver",10,1]]],["FistGold","Nord Knucklechains","Fists",4,"Iron Protection Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Knucklechains",1,0],["Timberwood",10,5]]],["FistGold_BloodLightning","Thunderblood Knucklechains","Fists",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["FistGold_FrostFire","Frostfire Knucklechains","Fists",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["Hammer","Hammer","Tools",3,"Wooden Battle Idol",1,0,[["Wood",3,1],["Stone",2,1]]],["HelmetAshlandsMediumHood","Hood of Ask","Helmets",4,"Flametal Protection Idol",1,0,[["Linen Thread",15,10],["Lox Pelt",4,2],["Asksvin Hide",10,5]]],["HelmetBerserkerHood","Headdress of the Bear","Helmets",4,"Black Marble Protection Idol",1,0,[["Bear Hide",5,2],["Bear Trophy",1,0]]],["HelmetBerserkerUndead","Vilebone Visage","Helmets",4,"Black Metal Protection Idol",1,0,[["Bear Hide",5,2],["Vile Trophy",1,0]]],["HelmetBronze","Bronze Helmet","Helmets",4,"Bronze Protection Idol",1,0,[["Bronze",5,3],["Deer Hide",2,0]]],["HelmetCarapace","Carapace Helmet","Helmets",4,"Black Marble Protection Idol",1,0,[["Carapace",16,8],["Scale Hide",3,1],["Mandible",2,0],["Refined Eitr",4,2]]],["HelmetCelebration","Celebratory Cap","Helmets",4,"Wooden Protection Idol",1,0,[["Deer Hide",2,1],["Bronze",1,1],["Bear Hide",1,0],["Amber Pearl",1,0]]],["HelmetDNMage","Headdress of the Caller","Helmets",4,"Bloodgold Protection Idol",1,0,[["Moose Sinew",2,1],["Mould: Headdress of the Caller",1,0],["Moose Trophy",1,0],["Nornathread",3,2]]],["HelmetDNMediumHood","Hood of the Vanguard","Helmets",4,"Bloodgold Protection Idol",1,0,[["Seal Pelt",5,3],["Mould: Hood of the Vanguard",1,0],["Moose Hide",5,3],["Moose Sinew",1,1]]],["HelmetDrake","Drake Helmet","Helmets",4,"Silver Protection Idol",1,0,[["Silver",20,5],["Wolf Pelt",2,0],["Drake Trophy",2,0]]],["HelmetFenring","Fenris Hood","Helmets",4,"Silver Protection Idol",1,0,[["Fenris Hair",20,5],["Wolf Pelt",2,4],["Cultist Trophy",1,0]]],["HelmetFishingHat","Fishing Hat","Helmets",4,"Bronze Protection Idol",1,0,[["Perch",1,1],["Pike",1,1],["Tuna",1,1],["Tetra",1,1],["Trollfish",1,1],["Giant Herring",1,1],["Grouper",1,1],["Coral Cod",1,1],["Anglerfish",1,1],["Northern Salmon",1,1],["Magmafish",1,1],["Pufferfish",1,1]]],["HelmetFlametal","Flametal Helmet","Helmets",4,"Flametal Protection Idol",1,0,[["Flametal",16,8],["Asksvin Hide",3,1],["Charred Bone",2,0],["Refined Eitr",4,2]]],["HelmetIron","Iron Helmet","Helmets",4,"Iron Protection Idol",1,0,[["Iron",20,5],["Deer Hide",2,0]]],["HelmetLeather","Leather Helmet","Helmets",4,"Wooden Protection Idol",1,0,[["Deer Hide",6,6],["Bone Fragments",0,5]]],["HelmetLox","Lox Fur Hood","Helmets",4,"Black Metal Protection Idol",1,0,[["Lox Pelt",4,2],["Bone Fragments",4,2],["Writhan Roots",2,1]]],["HelmetMage","Eitr-weave Hood","Helmets",4,"Black Marble Protection Idol",1,0,[["Linen Thread",16,8],["Refined Eitr",15,5],["Iron",2,0]]],["HelmetMage_Ashlands","Hood of Embla","Helmets",4,"Flametal Protection Idol",1,0,[["Linen Thread",16,8],["Refined Eitr",15,5],["Asksvin Hide",2,0]]],["HelmetOdin","Hood of Oden","Helmets",4,"Bronze Protection Idol",1,0,[["Leather Scraps",10,5],["Coal",4,2]]],["HelmetPadded","Padded Helmet","Helmets",4,"Black Metal Protection Idol",1,0,[["Iron",10,5],["Linen Thread",15,10]]],["HelmetRoot","Root Mask","Helmets",4,"Iron Protection Idol",1,0,[["Root",10,2],["Ancient Bark",10,5],["Leather Scraps",4,0]]],["HelmetTrollLeather","Troll Leather Hood","Helmets",4,"Bronze Protection Idol",1,0,[["Troll Hide",5,2],["Bone Fragments",3,1]]],["Hoe","Hoe","Tools",3,"Wooden Battle Idol",1,0,[["Wood",5,1],["Stone",2,1]]],["KnifeBlackMetal","Black Metal Knife","Knives",4,"Black Metal Battle Idol",1,0,[["Finewood",4,0],["Black Metal",10,4],["Linen Thread",5,5]]],["KnifeChitin","Abyssal Razor","Knives",4,"Silver Battle Idol",1,0,[["Finewood",4,0],["Chitin",20,10],["Leather Scraps",2,0]]],["KnifeCopper","Copper Knife","Knives",4,"Bronze Battle Idol",1,0,[["Wood",2,0],["Copper",8,4],["Greydwarf Eye",0,8]]],["KnifeFlint","Flint Knife","Knives",4,"Wooden Battle Idol",1,0,[["Wood",2,0],["Flint",4,2],["Leather Scraps",2,0]]],["KnifeGold","Nord Dagger","Knives",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Dagger",1,0],["Timberwood",10,5]]],["KnifeGold_BloodLightning","Thunderblood Dagger","Knives",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["KnifeGold_FrostFire","Frostfire Dagger","Knives",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["KnifeSilver","Silver Knife","Knives",4,"Silver Battle Idol",1,0,[["Wood",2,1],["Silver",10,5],["Leather Scraps",3,1],["Iron",2,1]]],["KnifeSkollAndHati","Skoll and Hati","Knives",4,"Black Metal Battle Idol",1,0,[["Finewood",4,0],["Iron",10,4],["Black Metal",10,4]]],["MaceBronze","Bronze Mace","Clubs",4,"Bronze Battle Idol",1,0,[["Wood",4,0],["Bronze",8,4],["Leather Scraps",3,0]]],["MaceEldner","Flametal Mace","Clubs",4,"Flametal Battle Idol",1,0,[["Charred Bone",10,5],["Flametal",15,8],["Sulfur",5,3],["Asksvin Hide",3,2]]],["MaceEldnerBlood","Bloodgeon","Clubs",4,"Flametal Battle Idol",1,0,[["Flametal",8,8]]],["MaceEldnerLightning","Storm Star","Clubs",4,"Flametal Battle Idol",1,0,[["Flametal",8,8]]],["MaceEldnerNature","Klossen","Clubs",4,"Flametal Battle Idol",1,0,[["Flametal",8,8]]],["MaceGold","Nord Mace","Clubs",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Mace",1,0],["Timberwood",10,5]]],["MaceGold_BloodLightning","Thunderblood Mace","Clubs",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["MaceGold_FrostFire","Frostfire Mace","Clubs",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["MaceIron","Iron Mace","Clubs",4,"Iron Battle Idol",1,0,[["Wood",4,0],["Iron",20,10],["Leather Scraps",3,0]]],["MaceNeedle","Porcupine","Clubs",4,"Black Metal Battle Idol",1,0,[["Finewood",5,0],["Iron",20,2],["Needle",5,2],["Linen Thread",10,0]]],["MaceSilver","Frostner","Clubs",4,"Silver Battle Idol",1,0,[["Ancient Bark",10,0],["Silver",30,15],["Ymir Flesh",5,0],["Freeze Gland",5,0]]],["PickaxeBlackMetal","Black Metal Pickaxe","Tools",4,"Black Metal Battle Idol",1,0,[["Yggdrasil Wood",3,1],["Black Metal",25,15]]],["PickaxeBronze","Bronze Pickaxe","Tools",4,"Bronze Battle Idol",1,0,[["Corewood",3,1],["Bronze",10,5]]],["PickaxeIron","Iron Pickaxe","Tools",4,"Iron Battle Idol",1,0,[["Corewood",3,1],["Iron",20,10]]],["Scythe","Scythe","Tools",3,"Wooden Battle Idol",1,0,[["Scythe Handle",1,0],["Silver",6,5]]],["ShieldBanded","Banded Shield","Shields",3,"Iron Protection Idol",1,0,[["Finewood",10,10],["Iron",8,4]]],["ShieldBlackmetal","Black Metal Shield","Shields",3,"Black Metal Protection Idol",1,0,[["Finewood",10,10],["Black Metal",8,4],["Chain",5,2]]],["ShieldBlackmetalTower","Black Metal Tower Shield","Shields",3,"Black Metal Protection Idol",1,0,[["Finewood",15,10],["Black Metal",10,4],["Chain",7,2]]],["ShieldBoneTower","Bone Tower Shield","Shields",3,"Bronze Protection Idol",1,0,[["Wood",10,5],["Bone Fragments",10,5],["Skeleton Trophy",3,0]]],["ShieldBronzeBuckler","Bronze Buckler","Shields",3,"Bronze Protection Idol",1,0,[["Bronze",10,5],["Wood",4,1]]],["ShieldCarapace","Carapace Shield","Shields",3,"Black Marble Protection Idol",1,0,[["Carapace",20,10],["Scale Hide",3,3],["Refined Eitr",10,3]]],["ShieldCarapaceBuckler","Carapace Buckler","Shields",3,"Black Marble Protection Idol",1,0,[["Carapace",16,8],["Scale Hide",3,3],["Refined Eitr",10,3]]],["ShieldFlametal","Flametal Shield","Shields",3,"Flametal Protection Idol",1,0,[["Ashwood",10,10],["Flametal",8,4],["Asksvin Hide",2,2]]],["ShieldFlametalTower","Flametal Tower Shield","Shields",3,"Flametal Protection Idol",1,0,[["Ashwood",15,10],["Flametal",10,4],["Asksvin Hide",5,2]]],["ShieldGold","Nord Shield","Shields",3,"Bloodgold Protection Idol",1,0,[["Bloodgold",15,8],["Mould: Nord Shield",1,0],["Timberwood",10,5]]],["ShieldGoldBuckler","Nord Buckler","Shields",3,"Bloodgold Protection Idol",1,0,[["Bloodgold",10,5],["Mould: Nord Buckler",1,0],["Timberwood",10,5]]],["ShieldGoldTower","Nord Greatshield","Shields",3,"Bloodgold Protection Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Greatshield",1,0],["Timberwood",20,10]]],["ShieldIronBuckler","Iron Buckler","Shields",3,"Iron Protection Idol",1,0,[["Iron",10,5],["Ancient Bark",4,1]]],["ShieldIronTower","Iron Tower Shield","Shields",3,"Iron Protection Idol",1,0,[["Finewood",15,10],["Iron",10,5]]],["ShieldRoots","Shield of Roots","Shields",3,"Iron Protection Idol",1,0,[["Finewood",10,5],["Writhan Roots",1,2]]],["ShieldSerpentscale","Serpent Scale Shield","Shields",3,"Silver Protection Idol",1,0,[["Finewood",10,10],["Iron",4,2],["Serpent Scale",8,4]]],["ShieldSilver","Silver Shield","Shields",3,"Silver Protection Idol",1,0,[["Finewood",10,10],["Silver",8,4]]],["ShieldWood","Wood Shield","Shields",3,"Wooden Protection Idol",1,0,[["Wood",10,5],["Resin",4,2],["Leather Scraps",4,2]]],["ShieldWoodTower","Wood Tower Shield","Shields",3,"Wooden Protection Idol",1,0,[["Wood",10,5],["Leather Scraps",6,3]]],["Shovel","Snow Shovel","Tools",3,"Wooden Battle Idol",1,0,[["Finewood",5,1],["Flametal",4,10],["Embers",2,0]]],["SledgeDemolisher","Demolisher","Clubs",4,"Black Marble Battle Idol",1,0,[["Yggdrasil Wood",10,2],["Iron",20,15],["Refined Eitr",10,2]]],["SledgeGold","Nord Sledge","Clubs",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Sledge",1,0],["Timberwood",10,5]]],["SledgeGold_BloodLightning","Thunderblood Sledge","Clubs",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["SledgeGold_FrostFire","Frostfire Sledge","Clubs",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["SledgeIron","Iron Sledge","Clubs",4,"Iron Battle Idol",1,0,[["Ancient Bark",10,2],["Iron",30,15],["Ymir Flesh",4,2],["Draugr Elite Trophy",1,0]]],["SledgeStagbreaker","Stagbreaker","Clubs",4,"Wooden Battle Idol",1,0,[["Corewood",20,5],["Deer Trophy",5,2],["Leather Scraps",2,1],["Bone Fragments",0,10]]],["SpearBronze","Bronze Spear","Spears",4,"Bronze Battle Idol",1,0,[["Wood",5,3],["Bronze",6,4],["Deer Hide",2,1]]],["SpearCarapace","Carapace Spear","Spears",4,"Black Marble Battle Idol",1,0,[["Yggdrasil Wood",10,5],["Carapace",4,4],["Mandible",2,1]]],["SpearElderbark","Ancient Bark Spear","Spears",4,"Iron Battle Idol",1,0,[["Troll Hide",4,1],["Iron",10,5],["Ancient Bark",10,5]]],["SpearFlint","Flint Spear","Spears",4,"Wooden Battle Idol",1,0,[["Wood",5,3],["Flint",10,5],["Leather Scraps",2,1]]],["SpearGold","Nord Spear","Spears",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Spear",1,0],["Timberwood",10,5]]],["SpearGold_BloodLightning","Thunderblood Spear","Spears",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["SpearGold_FrostFire","Frostfire Spear","Spears",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["SpearSplitner","Splitnir","Spears",4,"Black Marble Battle Idol",1,0,[["Ashwood",10,5],["Flametal",6,6],["Asksvin Hide",2,1],["Bonemaw Tooth",3,3]]],["SpearSplitner_Blood","Splitnir the Bleeding","Spears",4,"Black Marble Battle Idol",1,0,[["Flametal",6,6]]],["SpearSplitner_Lightning","Splitnir the Storming","Spears",4,"Black Marble Battle Idol",1,0,[["Flametal",6,6]]],["SpearSplitner_Nature","Splitnir the Primal","Spears",4,"Black Marble Battle Idol",1,0,[["Flametal",6,6]]],["SpearWolfFang","Fang Spear","Spears",4,"Silver Battle Idol",1,0,[["Ancient Bark",10,5],["Wolf Fang",4,2],["Leather Scraps",2,1],["Silver",2,1]]],["StaffClusterbomb","Staff of Fracturing","Elemental magic",4,"Flametal Battle Idol",1,0,[["Charred Bone",15,5],["Ashwood",5,3],["Proustite Powder",8,1]]],["StaffFireball","Staff of Embers","Elemental magic",4,"Black Marble Battle Idol",1,0,[["Yggdrasil Wood",20,10],["Surtling Core",4,2],["Refined Eitr",16,8]]],["StaffFrostOrbs","Northern Vengeance","Blood magic",4,"Bloodgold Battle Idol",1,0,[["Ice",10,5],["Nornathread",5,2],["Hexen Trophy",1,0]]],["StaffGreenRoots","Staff of the Wild","Elemental magic",4,"Flametal Battle Idol",1,0,[["Ashwood",15,5],["Fiddlehead",10,2],["Celestial Feather",3,3],["Jade",1,1]]],["StaffIceShards","Staff of Frost","Elemental magic",4,"Black Marble Battle Idol",1,0,[["Yggdrasil Wood",20,10],["Freeze Gland",4,2],["Refined Eitr",16,8]]],["StaffLightning","Dundr","Elemental magic",4,"Flametal Battle Idol",1,0,[["Ashwood",10,5],["Flametal",4,2],["Celestial Feather",3,3]]],["StaffOrbofAhri","Echo Spike","Blood magic",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",10,5],["Nornathread",4,2],["Frostfire Essence",1,1]]],["StaffRedTroll","Trollstav","Blood magic",4,"Flametal Battle Idol",1,0,[["Charred Bone",15,5],["Troll Trophy",1,1],["Flametal",3,3],["Bloodstone",1,1]]],["StaffShield","Staff of Protection","Blood magic",4,"Black Marble Battle Idol",1,0,[["Yggdrasil Wood",20,10],["Blood Clot",4,2],["Refined Eitr",16,8]]],["StaffSkeleton","Dead Raiser","Blood magic",4,"Black Marble Battle Idol",1,0,[["Bone Fragments",10,5],["Refined Eitr",16,8],["Skeleton Trophy",4,2]]],["StaffSpiritCaller","Spirit Caller","Blood magic",4,"Bloodgold Battle Idol",1,0,[["Frozen Branch",8,4],["Nornathread",5,2],["Moose Trophy",1,0]]],["StaffThunderBlood","Lightning Strike","Elemental magic",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",10,5],["Nornathread",5,2]]],["SwordBlackmetal","Black Metal Sword","Swords",4,"Black Metal Battle Idol",1,0,[["Finewood",2,0],["Black Metal",20,10],["Linen Thread",5,5]]],["SwordBronze","Bronze Sword","Swords",4,"Bronze Battle Idol",1,0,[["Wood",2,1],["Bronze",8,4],["Leather Scraps",2,1]]],["SwordDyrnwyn","Dyrnwyn","Swords",4,"Flametal Battle Idol",1,0,[["$item_Dyrnwyn_hilt",1,0],["$item_Dyrnwyn_blade",1,0],["$item_Dyrnwyn_tip",1,0],["Flametal",20,10],["Bloodstone",1,1]]],["SwordGold","Nord Sword","Swords",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Sword",1,0],["Timberwood",10,5]]],["SwordGold_BloodLightning","Thunderblood Sword","Swords",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["SwordGold_FrostFire","Frostfire Sword","Swords",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["SwordIron","Iron Sword","Swords",4,"Iron Battle Idol",1,0,[["Wood",2,1],["Iron",20,10],["Leather Scraps",3,2]]],["SwordMistwalker","Mistwalker","Swords",4,"Black Marble Battle Idol",1,0,[["Finewood",3,0],["Iron",15,10],["Refined Eitr",10,5],["Wisp",3,1]]],["SwordNiedhogg","Nidhögg","Swords",4,"Flametal Battle Idol",1,0,[["Charred Bone",3,0],["Flametal",12,10],["Asksvin Hide",2,2]]],["SwordNiedhoggBlood","Nidhögg the Bleeding","Swords",4,"Flametal Battle Idol",1,0,[["Flametal",6,6]]],["SwordNiedhoggLightning","Nidhögg the Thundering","Swords",4,"Flametal Battle Idol",1,0,[["Flametal",6,6]]],["SwordNiedhoggNature","Nidhögg the Primal","Swords",4,"Flametal Battle Idol",1,0,[["Flametal",6,6]]],["SwordSilver","Silver Sword","Swords",4,"Silver Battle Idol",1,0,[["Wood",2,1],["Silver",40,20],["Leather Scraps",3,1],["Iron",5,3]]],["SwordWood","Wooden Sword","Swords",4,"Bronze Battle Idol",1,0,[["Wood",5,1],["Finewood",3,10],["Corewood",2,2]]],["THSwordGold","Nord Greatsword","Swords",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10],["Mould: Nord Greatsword",1,0],["Frozen Branch",2,1]]],["THSwordGold_BloodLightning","Thunderblood Greatsword","Swords",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["THSwordGold_FrostFire","Frostfire Greatsword","Swords",4,"Bloodgold Battle Idol",1,0,[["Bloodgold",20,10]]],["THSwordKrom","Krom","Swords",4,"Black Marble Battle Idol",1,0,[["Iron",30,15],["Bronze",20,10],["Scale Hide",5,5]]],["THSwordSlayer","Slayer","Swords",4,"Flametal Battle Idol",1,0,[["Flametal",30,15],["Asksvin Hide",5,5],["Morgen Sinew",3,3]]],["THSwordSlayerBlood","Brutal Slayer","Swords",4,"Flametal Battle Idol",1,0,[["Flametal",15,15]]],["THSwordSlayerLightning","Scourging Slayer","Swords",4,"Flametal Battle Idol",1,0,[["Flametal",15,15]]],["THSwordSlayerNature","Primal Slayer","Swords",4,"Flametal Battle Idol",1,0,[["Flametal",15,15]]]].map(([prefab, name, category, maxQ, idol, idolAmt, idolPer, mats]) =>
+  ({ prefab, name, category, maxQ, idol, idolAmt, idolPer, mats }));
+const BY_PREFAB = Object.fromEntries(ITEMS.map(i => [i.prefab, i]));
+const UPGRADE_CHANCE = Math.fround(0.65), BREAK_RETURN = Math.fround(0.35);
+const CATEGORY_ORDER = ["Swords", "Axes", "Clubs", "Knives", "Spears", "Polearms", "Fists", "Bows", "Crossbows",
+  "Elemental magic", "Blood magic", "Shields", "Helmets", "Chest armor", "Leg armor", "Capes", "Tools"];
+
+// ---- game math (mirrors assembly_valheim / assembly_utils) ----
+function stableHash(s) {
+  let a = 5381, b = 5381;
+  for (let i = 0; i < s.length && s.charCodeAt(i) !== 0; i += 2) {
+    a = (Math.imul(a, 33) ^ s.charCodeAt(i)) | 0;
+    if (i === s.length - 1 || s.charCodeAt(i + 1) === 0) break;
+    b = (Math.imul(b, 33) ^ s.charCodeAt(i + 1)) | 0;
+  }
+  return (a + Math.imul(b, 1566083941)) | 0;
+}
+// UnityEngine.Random: xorshift128 seeded MT-style
+function roll(seed) {
+  let x = seed >>> 0;
+  let y = (Math.imul(1812433253, x) + 1) >>> 0;
+  let z = (Math.imul(1812433253, y) + 1) >>> 0;
+  let w = (Math.imul(1812433253, z) + 1) >>> 0;
+  const next = () => {
+    const t = (x ^ (x << 11)) >>> 0;
+    x = y; y = z; z = w;
+    w = (w ^ (w >>> 19) ^ t ^ (t >>> 8)) >>> 0;
+    return w;
+  };
+  const value = (next() & 0x7FFFFF) / 8388607;
+  const nextSeed = (next() % 99999999) | 0;
+  return [value, nextSeed];
+}
+const keyFor = (prefab, level) => (stableHash(prefab) + level) | 0;
+const firstSeed = (name, key) => (stableHash(name) + key) | 0;
+
+function sequence(name, seeds, prefab, level, count) {
+  const key = keyFor(prefab, level);
+  let seed = seeds.has(key) ? seeds.get(key) : firstSeed(name, key);
+  const out = [];
+  for (let i = 0; i < count; i++) { const [v, n] = roll(seed); out.push(v); seed = n; }
+  return out;
+}
+function attemptsMade(name, seeds, prefab, level) {
+  const key = keyFor(prefab, level);
+  if (!seeds.has(key)) return 0;
+  let seed = firstSeed(name, key);
+  for (let n = 1; n <= 500; n++) { seed = roll(seed)[1]; if (seed === seeds.get(key)) return n; }
+  return null;
+}
+// Piece.Requirement.GetAmount
+function amountAt(amount, perLevel, q, isIdol) {
+  if (q <= 1) return amount;
+  const f = q >= 4 ? 4 + (q - 4) / 2 : q - 1;
+  return Math.floor(f * perLevel + (isIdol ? amount : 0));
+}
+
+// ---- save parsing (PlayerProfile.LoadPlayerFromDisk) ----
+class Reader {
+  constructor(buf, pos = 0) { this.v = new DataView(buf); this.u8 = new Uint8Array(buf); this.p = pos; }
+  int() { const r = this.v.getInt32(this.p, true); this.p += 4; return r; }
+  skip(n) { this.p += n; }
+  bool() { return this.u8[this.p++] !== 0; }
+  str() {
+    let n = 0, shift = 0, b;
+    do { b = this.u8[this.p++]; n |= (b & 0x7f) << shift; shift += 7; } while (b & 0x80);
+    const s = new TextDecoder().decode(this.u8.subarray(this.p, this.p + n)); this.p += n; return s;
+  }
+  strFloatDict() { for (let i = this.int(); i > 0; i--) { this.str(); this.skip(4); } }
+}
+function parseSave(file) {
+  const outer = new DataView(file);
+  const len = outer.getInt32(0, true);
+  const data = file.slice(4, 4 + len);
+  const r = new Reader(data);
+  const ver = r.int();
+  if (ver < 44) throw new Error(`This save uses an old format (version ${ver}). Load the character in the current game once, then try again.`);
+  const statCount = r.int(), diffs = r.int();
+  for (let d = 0; d < diffs; d++) {
+    r.skip(4 * statCount);
+    for (let i = 0; i < 3; i++) r.strFloatDict();
+    for (let e = r.int(); e > 0; e--) r.strFloatDict();
+    for (let i = 0; i < 5; i++) r.strFloatDict();
+  }
+  r.bool();
+  for (let w = r.int(); w > 0; w--) {
+    r.skip(8); r.bool(); r.skip(12); r.bool(); r.skip(12); r.bool(); r.skip(12); r.skip(12);
+    if (r.bool()) r.skip(r.int());
+  }
+  const name = r.str();
+
+  // Upgrade seeds are the last dict in the player data, right after another int->int dict.
+  const dv = new DataView(data), end = data.byteLength;
+  let seeds = null;
+  outer: for (let n = 0; n < 10000; n++) {
+    const p = end - 8 * n - 4; if (p < 0) break;
+    if (dv.getInt32(p, true) !== n) continue;
+    for (let m = 0; m < 10000; m++) {
+      const q = p - 8 * m - 4; if (q < 0) break;
+      if (dv.getInt32(q, true) === m) {
+        seeds = new Map();
+        for (let i = 0; i < n; i++) seeds.set(dv.getInt32(p + 4 + 8 * i, true), dv.getInt32(p + 8 + 8 * i, true));
+        break outer;
+      }
+    }
+  }
+  if (!seeds) throw new Error("Couldn't find the forge seed table in this file. Is it a Valheim character (.fch)?");
+
+  // Inventory items: find each prefab hash, then a start offset that parses forward onto it.
+  const u8 = new Uint8Array(data), inventory = [];
+  for (const it of ITEMS) {
+    const h = stableHash(it.prefab);
+    for (let p = 8; p < end - 4; p++) {
+      if (dv.getInt32(p, true) !== h) continue;
+      for (let st = Math.max(0, p - 300); st < p - 7; st++) {
+        try {
+          const rr = new Reader(data, st + 4);
+          const fl = u8[rr.p + 3]; rr.skip(4);
+          if (!(fl & 0x40)) continue;
+          let q = 1;
+          if (fl & 4) { q = dv.getUint16(rr.p, true); rr.skip(2); }
+          if (fl & 8) rr.skip(2);
+          if (fl & 16) rr.skip(4);
+          if (fl & 32) { rr.skip(8); rr.str(); }
+          if (rr.p === p && q >= 1 && q <= 100) { inventory.push({ prefab: it.prefab, quality: q }); break; }
+        } catch (e) { /* not an item start */ }
+      }
+    }
+  }
+  return { name, seeds, inventory };
+}
+
+// ---- UI ----
+const $ = id => document.getElementById(id);
+let save = null;   // { name, seeds, inventory }
+
+function fillItemSelect(selected) {
+  const sel = $("item");
+  sel.innerHTML = "";
+  if (save && save.inventory.length) {
+    const g = document.createElement("optgroup"); g.label = "In your inventory";
+    save.inventory.forEach((inv, i) => {
+      const o = new Option(`${BY_PREFAB[inv.prefab].name} (level ${inv.quality})`, `inv:${i}`);
+      g.append(o);
+    });
+    sel.append(g);
+  }
+  const cats = [...new Set(ITEMS.map(i => i.category))].sort((a, b) => {
+    const ia = CATEGORY_ORDER.indexOf(a), ib = CATEGORY_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  for (const c of cats) {
+    const g = document.createElement("optgroup"); g.label = c;
+    ITEMS.filter(i => i.category === c).sort((a, b) => a.name.localeCompare(b.name))
+      .forEach(i => g.append(new Option(i.name, i.prefab)));
+    sel.append(g);
+  }
+  sel.value = selected;
+  if (!sel.value) sel.selectedIndex = 0;
+}
+
+function currentSelection() {
+  const v = $("item").value;
+  if (v.startsWith("inv:")) return save.inventory[+v.slice(4)].prefab;
+  return v;
+}
+
+function seedsFor(name) {
+  return save && save.name === name ? save.seeds : new Map();
+}
+
+function render() {
+  const name = $("name").value;
+  const prefab = currentSelection();
+  const item = BY_PREFAB[prefab];
+  const current = Math.max(1, +$("current").value || 1);
+  const levels = Math.min(30, Math.max(1, +$("levels").value || 1));
+  const tries = Math.min(12, Math.max(1, +$("attempts").value || 1));
+  const seeds = seedsFor(name);
+  const ok = v => v <= UPGRADE_CHANCE;
+
+  // Verdict for the very next try
+  const target = current + 1;
+  const [v0] = sequence(name, seeds, prefab, target, 1);
+  const success = ok(v0);
+  const idolCost = amountAt(item.idolAmt, item.idolPer, target, true);
+  const refund = item.mats.map(([n, a, per]) =>
+    [n, Math.ceil((amountAt(a, per, 1) + amountAt(a, per, current)) * BREAK_RETURN)]).filter(([, k]) => k > 0);
+  const vd = $("verdict");
+  vd.className = "verdict " + (success ? "success" : "break");
+  vd.innerHTML = `
+    <div class="what">${esc(item.name)}: next try, level ${current} → ${target}</div>
+    <div class="big">${success ? "Succeeds" : "Breaks"}</div>
+    <div class="sub">Roll ${v0.toFixed(3)} (needs 0.650 or lower)${!name ? ". Enter a character name." : ""}</div>
+    <div class="facts">
+      <span>Costs <b>${idolCost} × ${esc(item.idol)}</b></span>
+      <span>Refund if it breaks: <b>${refund.length ? refund.map(([n, k]) => `${k} ${esc(n)}`).join(", ") : "none"}</b></span>
+      <span>Normal max level: <b>${item.maxQ}</b></span>
+    </div>`;
+
+  // Straight run with one copy
+  const path = $("path");
+  let html = `<span class="chip start">level ${current}</span>`, lvl = target;
+  for (let i = 0; i < levels; i++, lvl++) {
+    const [v] = sequence(name, seeds, prefab, lvl, 1);
+    html += `<span class="arrow">→</span>`;
+    if (!ok(v)) { html += `<span class="chip bad">${lvl}: breaks</span>`; break; }
+    html += `<span class="chip">${lvl}</span>`;
+  }
+  path.innerHTML = html;
+
+  // Table
+  let t = `<thead><tr><th>Target</th><th>Tried</th>${Array.from({ length: tries }, (_, i) => `<th>${i === 0 ? "Next" : "Then"}</th>`).join("")}</tr></thead><tbody>`;
+  for (let l = target; l < target + levels; l++) {
+    const made = attemptsMade(name, seeds, prefab, l);
+    const cells = sequence(name, seeds, prefab, l, tries).map(v => {
+      const close = Math.abs(v - UPGRADE_CHANCE) < 0.001 ? " close" : "";
+      return `<td><span class="cell ${ok(v) ? "s" : "b"}${close}">${ok(v) ? "✓" : "✗"} ${v.toFixed(3)}</span></td>`;
+    }).join("");
+    t += `<tr><td class="lvl">${l}</td><td class="done">${made === null ? "?" : made}</td>${cells}</tr>`;
+  }
+  $("table").innerHTML = t + "</tbody>";
+
+  // Inventory overview
+  if (save && save.inventory.length) {
+    $("invSection").hidden = false;
+    const sel = $("item").value;
+    $("inv").innerHTML = save.inventory.map((inv, i) => {
+      const [v] = sequence(name, seedsFor(name), inv.prefab, inv.quality + 1, 1);
+      return `<button type="button" class="inv-item${sel === "inv:" + i ? " sel" : ""}" data-i="${i}">
+        <span class="n">${esc(BY_PREFAB[inv.prefab].name)}</span>
+        <span class="m">Level ${inv.quality} → ${inv.quality + 1}: <span class="${ok(v) ? "s" : "b"}">${ok(v) ? "succeeds" : "breaks"}</span> (${v.toFixed(3)})</span>
+      </button>`;
+    }).join("");
+  } else {
+    $("invSection").hidden = true;
+  }
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+function selectInventory(i) {
+  $("item").value = "inv:" + i;
+  $("current").value = save.inventory[i].quality;
+  render();
+}
+
+$("controls").addEventListener("submit", e => e.preventDefault());
+["name", "current", "levels", "attempts"].forEach(id => $(id).addEventListener("input", render));
+$("item").addEventListener("change", () => {
+  const v = $("item").value;
+  if (v.startsWith("inv:")) $("current").value = save.inventory[+v.slice(4)].quality;
+  render();
+});
+$("inv").addEventListener("click", e => {
+  const b = e.target.closest(".inv-item"); if (b) selectInventory(+b.dataset.i);
+});
+$("save").addEventListener("change", async e => {
+  const f = e.target.files[0], st = $("saveStatus");
+  if (!f) return;
+  st.hidden = false;
+  try {
+    save = parseSave(await f.arrayBuffer());
+    $("name").value = save.name;
+    fillItemSelect("");
+    st.className = "status ok";
+    st.textContent = `Loaded ${save.name}: ${save.inventory.length} refinable items, ${save.seeds.size} forge levels already tried.`;
+    if (save.inventory.length) selectInventory(0); else render();
+  } catch (err) {
+    save = null;
+    st.className = "status err";
+    st.textContent = err.message || "Couldn't read this file.";
+    fillItemSelect("StaffClusterbomb");
+    render();
+  }
+});
+
+fillItemSelect("StaffClusterbomb");
+render();
+</script>
